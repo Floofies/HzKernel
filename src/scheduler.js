@@ -2,19 +2,35 @@ function Process(ppid, gen, args = null) {
 	this.ppid = ppid;
 	this.supervisor = false;
 	this.generator = gen;
-	this.arguments = args === null ? undefined : args;
+	this.arguments = args;
+	this.childProcs = new Set();
+	this.childPids = [];
 	this.events = [];
+	this.waiting = false;
+	this.waitingOn = new Set();
+	this.makespan = infinity;
 }
-function Dispatcher() {
-	this.queue = new Queue();
-	this.procs = new Map();
-	this.pids = [];
-	this.waiting = [];
-	this.free = [];
+Process.prototype.spawnChild = function (gen, args = null) {
+	const child = new Process(this.pid, gen, args);
+	this.supervisor.exec(child);
+	this.childPids[child.pid] = child;
+	this.childProcs.add(child);
+};
+function Supervisor(args = null) {
+	Process.constructor.call(this, 0, null, args);
+	this.supervisor = true;
+}
+Supervisor.prototype = Object.new(Process.prototype);
+Supervisor.prototype.generator = function* (args) {
+
+};
+Supervisor.prototype.exec = function (proc) {
+
+};
+function Dispatcher(scheduler) {
 	this.halt = true;
 	this.running = false;
-	this.highestPid = 0;
-	this.scheduler = new Scheduler(this);
+	this.scheduler = scheduler;
 	this.eventListeners = new Map();
 };
 Dispatcher.prototype.start = function () {
@@ -24,46 +40,102 @@ Dispatcher.prototype.start = function () {
 Dispatcher.prototype.halt = function () {
 	this.halt = true;
 };
-Dispatcher.prototype.newPid = function () {
-	return ++this.highestPid;
-};
 Dispatcher.prototype.propagateEvent = function (event) {
 	const listeners = this.eventListeners.get(event);
-	if (listeners !== undefined) {
-		for (var listener in listeners) {
-			listener.events.push(event);
-			if (pid in this.scheduler.waiting && this.scheduler.waiting[pid] !== null) {
-				this.scheduler.ready[pid] = this.scheduler.waiting[pid];
-			}
+	if (listeners === undefined) {
+		return;
+	}
+	for (var proc in listeners) {
+		listener.events.push(event);
+		if (!proc.waiting || !proc.waitingOn.has(event)) {
+			continue;
+		}
+		proc.waitingOn.delete(event);
+		if (proc.waitingOn.size === 0) {
+			proc.waiting = false;
 		}
 	}
 };
 Dispatcher.prototype.sysCallHandler = function (proc, sysCall) {
 	switch (sysCall[0]) {
+		case EXEC:
+
+			break;
 		case EVENT_WAIT:
-			this.scheduler.waiting[proc.pid] = proc;
-			this.scheduler.queue[loc] = null;
-			this.scheduler.free.push(loc);
+			proc.waiting = true;
+			proc.waitingOn.push(sysCall[1]);
 			break;
 		case SYSTEM_HALT:
 			this.halt();
 			break;
 		case KILL_PID:
-			if (proc.supervisor) {
-				this.queue[sysCall[1]] = null;
-				this.free.push(sysCall[1]);
+			if (proc.supervisor || this.pids[sysCall[1]].ppid === proc.pid) {
+				this.killed.push(sysCall[1]);
 			}
 			break;
 		case KILL:
-			this.queue[pid] = null;
-			this.free.push(pid);
+			this.killed.push(proc.pid);
 			break;
 	}
 };
-Dispatcher.prototype.enqueue = function (process, args = null) {
-	if (!(process instanceof Process)) {
-		throw new TypeError("Scheduler.enqueue only accepts processes and arguments.");
+Dispatcher.prototype.delegate = function () {
+	const timings = [];
+	var proc;
+	_delegate: for (
+		var loc = 0;
+		proc = this.queue[loc],
+		!this.halt && loc < this.queue.length;
+		loc++
+	) {
+		if (proc === null || proc === undefined || proc.waiting) {
+			continue;
+		}
+		proc.makespan = process.hrtime();
+		var sysCall = proc.instance.next(proc.events);
+		proc.makespan = process.hrtime(proc.makespan);
+		proc.makespan = (proc.makespan[0] * 1e9) + proc.makespan[1];
+		proc.events.length = 0;
+		if (sysCall.done) {
+			this.queue[loc] = null;
+		}
+		if (sysCall.value !== undefined) {
+			this.sysCallHandler(sysCall.value);
+		}
+		if (this.killed.length > 0) {
+			var proc;
+			for (var loc = 0; proc = this.killed[loc], loc < this.killed; loc++) {
+				this.queue
+			}
+		}
 	}
+	return timings;
+};
+Dispatcher.prototype.run = function (queue) {
+	if (!this.halt && queue.length > 0) {
+		this.running = true;
+	}
+	_cycle: while (!this.halt && queue.length > 0) {
+		this.delegate(queue);
+		this.scheduler.shortOpt(queue);
+	}
+	this.running = false;
+};
+function Scheduler() {
+	this.queue = [];
+	this.procs = new Set();
+	this.pids = new Map();
+	this.waiting = new Set();
+	this.free = new Set();
+	this.killed = [];
+	this.highestPid = 0;
+	this.dispatcher = new Dispatcher(this);
+	this.supervisor = new Supervisor();
+	this.enqueue(this.supervisor);
+}
+Scheduler.prototype.newPid = function () {
+	return ++this.highestPid;
+};
+Scheduler.prototype.enqueue = function (process, args = null) {
 	try {
 		const parentProc = this.pids.get(process.ppid);
 		if (parentProc === undefined) {
@@ -74,48 +146,19 @@ Dispatcher.prototype.enqueue = function (process, args = null) {
 		}
 		process.instance = process.generator();
 		const pid = this.newPid();
-		this.procs.set(pid, process);
-		this.pids.set(process, pid);
+		this.procs.add(process);
+		this.pids.set(pid, process);
 		this.queue.push(process);
 
 	} catch (error) {
 		console.error(error);
 	}
 };
-Dispatcher.prototype.delegate = function () {
-	const timings = [];
-	var proc;
-	_delegate: for (var loc = 0; proc = this.queue[loc], !this.halt && loc < this.queue.length; loc++) {
-		if (proc === null) {
-			continue;
-		}
-		timings[proc.pid] = process.hrtime();
-		var sysCall = proc.instance.next(proc.events);
-		timings[proc.pid] = process.hrtime(timings[proc.pid]);
-		timings[proc.pid] = (timings[proc.pid][0] * 1e9) + timings[proc.pid][1];
-		proc.events.length = 0;
-		if (sysCall.done) {
-			this.queue[loc] = null;
-		}
-		if (sysCall.value !== undefined) {
-			this.sysCallHandler(sysCall.value);
-		}
-	}
-	return timings;
+Scheduler.prototype.shortOpt = function (queue) {
+	queue.sort(function (proc1, proc2) {
+		return proc1.makespan - proc2.makespan;
+	});
 };
-Dispatcher.prototype.run = function () {
-	if (!this.halt && this.procs.size > 0) {
-		this.running = true;
-	}
-	_cycle: while (!this.halt && this.procs.size > 0) {
-		this.scheduler.opt(this.queue, this.delegate());
-	}
-	this.running = false;
-};
-function Scheduler() {
-	this.load = 0;
-}
-Scheduler.prototype.opt = function (queue, timings) {
-	var loc = 0;
-	queue.sort((proc1, proc2) => timings[proc1.pid] - timings[proc2.pid]);
+Scheduler.prototype.longOpt = function (queue) {
+
 };
