@@ -37,4 +37,4 @@ There are several available schedulers to choose from:
 
 ### Privilege Modes
 
-Hertzfeld can restrict or relax how much it controls userspace execution. The kernel includes (the HertzScript compiler module)[https://github.com/Floofies/HzScript], which it optionally uses to modify the Abstract Syntax Trees of userspace code. The kernel can enforce cooperative preemption, or allow tasks to implement it themselves.
+Hertzfeld can restrict or relax how much it controls userspace execution. The kernel includes [the HertzScript compiler module](https://github.com/Floofies/HzScript), which it optionally uses to modify the Abstract Syntax Trees of userspace code. The kernel can enforce cooperative preemption, or allow tasks to implement it themselves.
