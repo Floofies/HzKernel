@@ -1,0 +1,1 @@
+stdLib.BackgroundScheduler.prototype = Object.create(stdLib.Scheduler.prototype);

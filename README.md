@@ -1,40 +1,64 @@
 # The Hertzfeld Kernel
+
 ```
-  __________________
+ ____________________
 < Under Construction >
-  ------------------
-         \   ^__^ 
-          \  (oo)\_______
-             (__)\       )\/\
-                 ||----w |
-                 ||     ||
+ --------------------
+        \   ^__^
+         \  (oo)\_______
+            (__)\       )\/\
+                ||----w |
+                ||     ||
 ```
+
+Work in Progress : Some documentation may reflect planned features.
 
 ---
 
-## :man: About Hertzfeld
-
-Andy Hertzfeld (born April 6, 1953) is an American computer scientist and inventor who was a member of the original Apple Macintosh development team during the 1980s. After buying an Apple II in January 1978, he went to work for Apple Computer from August 1979 until March 1984, where he was a designer for the Macintosh system software.
-
-Since leaving Apple, he has co-founded three companies: Radius in 1986, General Magic in 1990 and Eazel in 1999. In 2002, he helped the Open Source Applications Foundation promote open source software. Hertzfeld worked at Google from 2005 to 2013, where in 2011 he was the key designer of the Circles user interface in Google+.
-
 ## :octocat: About the Hertzfeld Kernel
 
-The Hertzfeld Kernel is a configurable cooperative multitasking microkernel for JavaScript, enabling concurrent execution of multiple functions in real-time.
+The Hertzfeld Kernel is a multitasking microkernel for JavaScript which enables concurrent execution of multiple functions. Userspace programs can be scheduled cooperatively and/or preemptively.
 
-## Configurations
+To implement voluntary preemptive multitasking, which is a hybrid of both cooperative and preemptive multitasking, Hertzfeld optionally pre-processes userspace source code using [the HertzScript compiler](https://github.com/Floofies/HertzScript). By using HertzScript, functions can be transparently transformed into Generators, and scheduler control points can be inserted.
 
-A wide variety of configurations are available.
+## Overview of Features
 
-### Scheduling
+A wide variety of configurations are available for multiple use cases.
 
-There are several available schedulers to choose from:
-- The Completely Fair Scheduler (CFS)
-- Batch
-- FIFO
-- Idle/Background
+### Process Scheduling
+
+There are several available scheduling policies to choose from:
+- Completely Fair Scheduler
+- Background/Batch
+- FCFS/FIFO
+- Round Robin
 - Multilevel Priority Queue
+- Manual
 
-### Privilege Modes
+Context switching may take place at three specific points during the execution of a user process:
+- System Calls
+- Control Points
+- User-supplied Yields
 
-Hertzfeld can restrict or relax how much it controls userspace execution. The kernel includes [the HertzScript compiler module](https://github.com/Floofies/HzScript), which it optionally uses to modify the Abstract Syntax Trees of userspace code. The kernel can enforce cooperative preemption, or allow tasks to implement it themselves.
+At any one of these points, the kernel may invoke the scheduler and/or delegate control to another process, eventually returning control back to a process at the same point; or the kernel may do nothing, and allow the process to continue executing.
+
+## Kernel Standard Library
+
+Hertzfeld includes a standard kernel library which contains the reusable and user-friendly components of the kernel.
+
+Available classes include:
+- EventBus
+- Core Scheduler & Scheduling Classes
+- Thread Manager
+
+## Kernel Modules
+
+In addition to the kernel library, Hertzfeld includes a number of imported libraries and modules.
+- [Differentia.js](https://github.com/Floofies/Differentia.js)
+- [HertzScript](https://github.com/Floofies/HertzScript)
+
+---
+
+## :man: About the Hertzfeld Name
+
+Andy Hertzfeld (after whom this project is named) is an American computer scientist, inventor, and "software wizard". He was a member of the original Apple Macintosh development team during the 1980s, where became a primary architect of the original Macintosh System Software. Among his more recent escapades, Andy helped to create the Nautilus file manager for GNOME, helped the Open Source Applications Foundation promote open source software, and was also the key designer of the Circles user interface in Google+.
