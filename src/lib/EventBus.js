@@ -1,11 +1,11 @@
-stdLib.EventBus = function () {
+function EventBus() {
 	this.eventListeners = new Map();
-	this.eventQueue = new stdLib.DoubleLinkedList();
+	this.eventQueue = new DoubleLinkedList();
 	this.dispatcher = null;
 	this.catchAllEnabled = false;
 };
-stdLib.EventBus.CATCH_ALL = new Symbol("CatchAll Event");
-stdLib.EventBus.dispatchIterator = function* (thisArg = null) {
+EventBus.CATCH_ALL = new Symbol("CatchAll Event");
+EventBus.dispatchIterator = function* (thisArg = null) {
 	while (true) {
 		if (this.eventQueue.size > 0) {
 			for (var element of this.eventQueue[Symbol.iterator]()) {
@@ -35,14 +35,14 @@ stdLib.EventBus.dispatchIterator = function* (thisArg = null) {
 		yield;
 	}
 };
-stdLib.EventBus.dispatch = function () {
+EventBus.dispatch = function () {
 	this.dispatcher = this.dispatchIterator();
 	return this.dispatcher;
 };
-stdLib.EventBus.prototype.publishEvent = function (event) {
+EventBus.prototype.publishEvent = function (event) {
 	this.eventQueue.append(event);
 };
-stdLib.EventBus.prototype.addEventListener = function (name, callback) {
+EventBus.prototype.addEventListener = function (name, callback) {
 	var listeners = this.eventListeners.get(name);
 	if (listeners === undefined) {
 		listeners = new Set();
@@ -52,7 +52,7 @@ stdLib.EventBus.prototype.addEventListener = function (name, callback) {
 		this.eventListeners.get(name).add(callback);
 	}
 };
-stdLib.EventBus.prototype.removeEventListener = function (name, callback) {
+EventBus.prototype.removeEventListener = function (name, callback) {
 	var listeners = this.eventListeners.get(name);
 	if (listeners === undefined) {
 		return;
@@ -62,3 +62,4 @@ stdLib.EventBus.prototype.removeEventListener = function (name, callback) {
 		this.eventListeners.delete(name)
 	}
 };
+module.exports = EventBus;

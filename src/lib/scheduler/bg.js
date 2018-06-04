@@ -1,1 +1,2 @@
-stdLib.BackgroundScheduler.prototype = Object.create(stdLib.Scheduler.prototype);
+const CoreScheduler = require("./CoreScheduler.js");
+const d = require("differentia");

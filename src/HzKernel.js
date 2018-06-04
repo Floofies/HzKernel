@@ -30,22 +30,14 @@ Kernel.prototype.dispatch = function () {
 	this.running = true;
 	var procStartTime = 0;
 	var procState = null;
-	_cycle: for (this.curProcData of this.scheduler[Symbol.iterator]()) {
-		if (this.running === false) {
-			break;
-		}
-		this.curProc = this.curProcData.proc;
-		procStartTime = performance.now();
-		this.curProc.makeflight = 0;
-		_delegate: while ((this.curProcData.quantum / this.curProcData.makeflight) >= 1) {
-			var procState = this.curProc.dispatchIterator.next();
-			this.curProcData.makeflight = performance.now() - procStartTime;
-			if (procState.done) {
-				this.killProc(this.curProcData);
-				continue _cycle;
-			} else if (procState.value !== undefined) {
-				this.sysCall(instanceState.value);
-			}
+	contextSwitch: while (this.running === true) {
+		var procData = this.scheduler.dispatch();
+		var procState = this.procData.descriptor.dispatchIterator.next();
+		if (procState.done) {
+			this.killProc(this.curProcData);
+			continue cycle;
+		} else if (procState.value !== undefined) {
+			this.sysCall(instanceState.value);
 		}
 	}
 	this.running = false;
@@ -153,31 +145,4 @@ const sysCallStrings = Object.keys(Kernel.prototype.SCP);
 sysCallStrings.forEach(name =>
 	Kernel.prototype.SCI[name] = (...args) => [name, args]
 );
-
-var hz = new Kernel();
-var testProcess = function* () {
-	console.info("Test process " + this.pid + " is alive!");
-	console.log("Process " + this.pid + " is spawning a child process.");
-	var childPid = yield hz.EXEC_CHILD(function* () {
-		console.info("Test process " + this.pid + " is alive!");
-		console.log("Process " + this.pid + " is now emitting a heartbeat event.");
-		yield hz.EMIT_EVENT("iLive", this.pid);
-		this.addEventListener("sayHello", function (event) {
-			console.log("Hello process " + event.value + "!");
-		});
-		this.idle = true;
-		yield;
-	});
-	console.log("Waiting for heartbeat from the child process...");
-	this.addEventListener("iLive", function (event) {
-		this.idle = false;
-	});
-	var heartbeatEvent = yield hz.EVENT_WAIT("iLive");
-	console.log("Heard from child process " + iLiveEvent.value + "!");
-	for (var loc = 0; loc <= 5; loc++) {
-		console.log("Asking process " + iLiveEvent.value + " to say hello...");
-		yield hz.EMIT_EVENT("sayHello", this.pid);
-	}
-};
-hz.exec(testProcess);
-hz.run();
+module.exports = Kernel;

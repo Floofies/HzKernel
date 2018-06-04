@@ -22,3 +22,7 @@ stdLib.bindAssign = function (thisArg, toObj, ...objects) {
 stdLib.nullifyObject = function (obj) {
 	Object.keys(obj).forEach(prop => obj.prop = null);
 };
+module.exports = {
+	EventBus: require("./EventBus.js"),
+	CoreScheduler: require("./scheduler/CoreScheduler.js")
+};
