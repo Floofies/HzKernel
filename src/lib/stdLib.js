@@ -1,17 +1,15 @@
-const stdLib = {};
-Object.assign(stdLib, differentia);
-Kernel.prototype.stdLib = stdLib;
-stdLib.compose = (...funcs) =>
+function compose(...funcs) {
 	initValue => funcs.reduce(
 		(value, func) => func(value),
 		initValue
 	);
-stdLib.randStr = stdLib.compose(
+}
+const randStr = stdLib.compose(
 	() => Math.floor((1 + Math.random()) * 0x10000),
 	int => int.toString(8),
 	str => str.substring(1)
 );
-stdLib.bindAssign = function (thisArg, toObj, ...objects) {
+function bindAssign(thisArg, toObj, ...objects) {
 	for (var obj of objects) {
 		for (var prop in obj) {
 			toObj[prop] = (typeof obj[prop]) === "function" ? obj[prop].bind(thisArg) : obj[prop];
@@ -19,10 +17,15 @@ stdLib.bindAssign = function (thisArg, toObj, ...objects) {
 	}
 	return toObj;
 };
-stdLib.nullifyObject = function (obj) {
+function nullifyObject(obj) {
 	Object.keys(obj).forEach(prop => obj.prop = null);
 };
 module.exports = {
+	HzKernel: require("../HzKernel.js"),
 	EventBus: require("./EventBus.js"),
-	CoreScheduler: require("./scheduler/CoreScheduler.js")
+	Threader: require("./Threader.js"),
+	compose: compose,
+	randStr: randStr,
+	bindAssign: bindAssign,
+	nullifyObject: nullifyObject
 };

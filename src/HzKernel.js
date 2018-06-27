@@ -1,24 +1,32 @@
-function Kernel() {
-	this.scheduler = new stdLib.Scheduler();
+const EventBus = require("./lib/EventBus.js");
+const Threader = require("./lib/Threader.js");
+function Kernel(interrupt = null) {
+	this.threader = new Threader();
 	this.procs = new Map();
 	this.running = false;
-	this.eventBus = new stdLib.EventBus();
-	this.curElement = null;
-	this.curProc = null;
+	this.eventBus = new EventBus();
 	this.highestPid = 0;
-	this.sysCallProcedures = stdLib.bindAssign(this, {}, this.prototype.SCP);
-	this.SCP = this.sysCallProcedures;
+	this.SCP = stdLib.bindAssign(this, {}, this.prototype.SCP);
+	this.sysCallProcedures = this.SCP;
+	this.dispatcher = this.dispatchIterator(interrupt);
 }
 Kernel.prototype.errors = {
-	PID_NOPROC_ERR: function (pid) {
+	PID_NOPROC: function (pid) {
 		this.message = "No ProcDescriptor was found for PID \"" + pid + "\"";
-		this.name = "PID_REF_ERR";
+		this.name = "PID_NOPROC_ERR";
+	},
+	SYSCALL_NOCALL: function (pid, call) {
+		this.message = "The system call \"" + String(call) + "\" was not found for PID \"" + pid + "\"";
+		this.name = "SYSCALL_NOCALL_ERR";
 	}
 };
-const errorNames = Object.keys(Kernel.prototype.errors);
-errorNames.forEach(
-	name => Kernel.prototype.errors[name].prototype = Error.prototype
-);
+for (const error in Kernel.prototype.errors) {
+	Kernel.prototype.errors[error].prototype = Object.create(Error.prototype);
+}
+Kernel.prototype.throw = function (errorName, pid) {
+	if (!(errorName in this.errors)) throw new Error("Kernel Error \"" + String(errorName) + "\" was not found. (requested by PID \"" + pid + "\")");
+	throw new this.errors[errorName](pid);
+};
 Kernel.prototype.Event = function (name, value) {
 	this.name = name;
 	this.value = value;
@@ -26,56 +34,55 @@ Kernel.prototype.Event = function (name, value) {
 Kernel.prototype.dispatchEvent = function (name, value) {
 	this.eventBus.publishEvent(name, value);
 };
-Kernel.prototype.dispatch = function () {
+Kernel.prototype.dispatchIterator = function* (interrupt = null) {
 	this.running = true;
-	var procStartTime = 0;
-	var procState = null;
-	contextSwitch: while (this.running === true) {
-		var procData = this.scheduler.dispatch();
-		var procState = this.procData.descriptor.dispatchIterator.next();
-		if (procState.done) {
-			this.killProc(this.curProcData);
-			continue cycle;
-		} else if (procState.value !== undefined) {
-			this.sysCall(instanceState.value);
+	cycle: while (this.running === true) {
+		const state = this.threader.dispatcher.next();
+		if (state.done) {
+			this.killProc(this.threader.curThread);
+			break;
+		} else if (state.value !== undefined) {
+			this.sysCall(state.value, this.threader.curThread.descriptor);
+		}
+		if (this.interrupt || (interrupt !== null && interrupt())) {
+			this.interrupt = false;
+			yield;
 		}
 	}
 	this.running = false;
 	this.curElement = null;
 	this.curProc = null;
 };
-Kernel.prototype.run = function () {
-	if (this.running) {
-		return;
-	}
-	this.dispatch();
+Kernel.prototype.runSync = function () {
+	run: while (this.running && !this.interrupt && !this.dispatcher.next().done);
+};
+Kernel.prototype.runAsync = function () {
+	if (!this.running || this.dispatcher.next().done) return;
+	setTimeout(this.runAsync, 0);
 };
 Kernel.prototype.stop = function () {
 	this.running = false;
 };
 Kernel.prototype.exec = function (image, ...args) {
-	varproc = new this.ProcDescriptor(image);
-	var procData = new stdLib.Scheduler.ProcData(proc);
-	proc.initialize(args);
-	proc.pid = ++this.highestPid;
-	this.scheduler.enqueue(procData);
-	this.procs.set(proc.pid, procData);
-	return proc.pid;
+	const procDescriptor = new stdLib.CoreScheduler.ProcDescriptor(proc, ...args);
+	procDescriptor.pid = ++this.highestPid;
+	this.threader.enqueue(procDescriptor);
+	this.procs.set(procDescriptor.pid, procDescriptor);
+	return procDescriptor.pid;
 };
-Kernel.prototype.killProc = function (procData) {
-	const proc = procData.procDescriptor;
-	if (!proc.killed) {
-		for (var pid of this.proc.childPids.values()) {
+Kernel.prototype.killProc = function (procDescriptor) {
+	if (!procDescriptor.killed) {
+		for (const pid of this.procDescriptor.childPids.values()) {
 			this.SCP.KILL_PID(pid);
 		}
-		this.procs.delete(proc.pid);
-		proc.kill();
-		procData.killed = true;
+		this.procs.delete(procDescriptor.pid);
+		procDescriptor.kill();
+		procDescriptor.killed = true;
 	}
 };
-Kernel.prototype.sysCall = function (sysCall) {
-	this.curProc.lastSysCall = sysCall;
-	this.curProc.sysCallResponse = this.SCP[sysCall[0]].apply(this, sysCall[1]);
+Kernel.prototype.sysCall = function (sysCall, procDescriptor) {
+	procDescriptor.lastSysCall = sysCall;
+	procDescriptor.sysCallResponse = this.SCP[sysCall[0]](sysCall[1]);
 };
 Kernel.prototype.sysCallProcedures = {
 	EXEC: function (image, ...args) {
@@ -86,63 +93,64 @@ Kernel.prototype.sysCallProcedures = {
 		this.curProc.childPids.add(pid);
 		return pid;
 	},
-	FORK: function (...args) {
-		const pid = this.SCP.EXEC(this.curProc.image, ...args);
-		this.curProc.children.add(pid);
-		return pid;
+	FORK: function (...args, procDescriptor) {
+		return this.SCP.EXEC(procDescriptor.image, ...args);
 	},
 	FORK_PID: function (pid, ...args) {
-		const procData = this.procs.get(pid);
-		if (procData === undefined) {
+		const procDescriptor = this.procs.get(pid);
+		if (procDescriptor === undefined) {
 			throw new this.errors.PID_NOPROC_ERR(pid);
 		}
-		return this.SCP.EXEC(procData.proc.image, ...args);
+		return this.SCP.EXEC(procDescriptor.image, ...args);
 	},
-	FORK_CHILD: function (...args) {
+	FORK_CHILD: function (...args, procDescriptor) {
 		const pid = this.SCP.FORK(...args);
-		this.curProc.childPids.add(pid);
+		procDescriptor.childPids.add(pid);
+		return pid;
+	},
+	FORK_PID_CHILD: function (...args, procDescriptor) {
+		const procDescriptor = this.procs.get(pid);
+		if (procDescriptor === undefined) {
+			throw new this.errors.PID_NOPROC_ERR(pid);
+		}
+		const pid = this.SCP.EXEC(procDescriptor.image, ...args);
+		procDescriptor.childPids.add(pid);
 		return pid;
 	},
 	EMIT_EVENT: function (name, value) {
 		this.dispatchEvent(name, value);
 	},
-	TIME_WAIT: function (waitTime) {
-		this.curProc.waiting = true;
-		this.curProc.waitForTime = performance.now() + waitTime;
+	TIME_WAIT: function (waitTime, procDescriptor) {
+		procDescriptor.waiting = true;
+		procDescriptor.waitForTime = performance.now() + waitTime;
 	},
-	EVENT_WAIT: function (name) {
-		this.curProc.waiting = true;
-		this.curProc.waitForEvent = name;
-		this.curProc.eventBus.addEventListener(function (event) {
+	EVENT_WAIT: function (name, procDescriptor) {
+		procDescriptor.waiting = true;
+		procDescriptor.waitForEvent = name;
+		procDescriptor.eventBus.addEventListener(function (event) {
 			this.waitForEvent = null;
 			this.sysCallResponse = event;
-			if (this.waitForTime === null) {
-				this.waiting = false;
-			}
+			if (this.waitForTime === null) this.waiting = false;
 		});
 	},
-	EVENT_LISTEN: function (name, callback) {
-		this.eventBus.addEventListener(name, this.curProc.eventBus.publishEvent);
+	EVENT_LISTEN: function (name, callback, procDescriptor) {
+		this.eventBus.addEventListener(name, procDescriptor.eventBus.publishEvent);
 	},
 	HALT: function () {
 		this.stop();
 	},
-	KILL_PID: function (pid) {
-		const procData = this.procs.get(pid);
-		if (procData === undefined) {
+	KILL: function (pid) {
+		const procDescriptor = this.procs.get(pid);
+		if (procDescriptor === undefined) {
 			throw new this.errors.PID_NOPROC_ERR(pid);
 		}
-		this.killProc(procData);
-	},
-	KILL: function () {
-		this.killProc(this.curProcData);
+		this.killProc(procDescriptor);
 	}
 };
 Kernel.prototype.SCP = Kernel.prototype.sysCallProcedures;
 Kernel.prototype.sysCallInterface = {};
 Kernel.prototype.SCI = Kernel.prototype.sysCallInterface;
-const sysCallStrings = Object.keys(Kernel.prototype.SCP);
-sysCallStrings.forEach(name =>
-	Kernel.prototype.SCI[name] = (...args) => [name, args]
-);
+for (const name in Kernel.prototype.SCP) {
+	Kernel.prototype.SCI[name] = (...args) => [name, args];
+}
 module.exports = Kernel;
